@@ -31,11 +31,21 @@ controls.update();
 // HDR Environment setup
 const pmremGenerator = new THREE.PMREMGenerator(renderer);
 pmremGenerator.compileEquirectangularShader();
+let envMapIntensity = 1; // Default intensity
 new RGBELoader().setPath('assets/').load('environment.hdr', function (texture) {
     const envMap = pmremGenerator.fromEquirectangular(texture).texture;
     scene.environment = envMap;
     texture.dispose();
     pmremGenerator.dispose();
+
+    // Apply environment map intensity to all relevant materials in the scene
+    scene.traverse((obj) => {
+        if (obj.isMesh && obj.material && obj.material.isMeshStandardMaterial) {
+            obj.material.envMap = envMap;
+            obj.material.envMapIntensity = envMapIntensity;
+            obj.material.needsUpdate = true;
+        }
+    });
 });
 
 // Animation loop
@@ -69,25 +79,37 @@ fileInput.addEventListener('change', () => {
     }
 });
 
-function handleFile(file: File) {
+function handleFile(file) {
     if (file.name.toLowerCase().endsWith('.glb')) {
+        document.getElementById('loading-indicator').style.display = 'block'; // Show loading indicator
         loadGLBFile(file);
     } else {
         alert('Unsupported file format. Please select only GLB files.');
     }
 }
 
-function loadGLBFile(file: File) {
+
+function loadGLBFile(file) {
     const reader = new FileReader();
     reader.onload = async (event) => {
         hideDropzone();
         const loader = new GLTFLoader();
-        loader.parse(event.target!.result as ArrayBuffer, '', (gltf) => {
-            centerAndScaleModel(gltf.scene);
-            scene.add(gltf.scene);
-        }, (error) => {
-            console.error('Error loading GLB file:', error);
-        });
+        loader.load(
+            URL.createObjectURL(file), // Create a URL for the file
+            (gltf) => { // onLoad callback
+                centerAndScaleModel(gltf.scene);
+                scene.add(gltf.scene);
+                document.getElementById('loading-indicator').style.display = 'none'; // Hide loading indicator
+            }, 
+            (xhr) => { // onProgress callback
+                const percentComplete = (xhr.loaded / xhr.total) * 100;
+                document.getElementById('loading-progress').style.width = percentComplete + '%'; // Update progress bar width
+            }, 
+            (error) => { // onError callback
+                console.error('Error loading GLB file:', error);
+                document.getElementById('loading-indicator').style.display = 'none'; // Hide loading indicator in case of error
+            }
+        );
     };
     reader.readAsArrayBuffer(file);
 }
@@ -118,3 +140,4 @@ const pane = new Pane({title: 'Controls'});
 pane.element.style.position = 'absolute';
 pane.element.style.top = '0px';
 pane.element.style.right = '0px';
+
